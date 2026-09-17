@@ -1,0 +1,10 @@
+# Complied executable
+/fim
+
+# macOs files
+.DS_Store
+
+# Python generated files and virtual environment
+__pycache__/
+*.pyc
+.venv/
