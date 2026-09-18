@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 #include <filesystem>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -52,41 +53,96 @@ std::string hash_file(const fs::path& path){
     return result.str();
 }
 
-int main(int argc, char* argv[]){
-    if(argc != 2){
-        std::cerr << "Usage: ./fim <directory>\n.";
+/**
+ * It returns a map containing relative file paths → hashes.
+ * Relative paths such as nested/another.txt identify files within the monitored directory.
+ * It skips symbolic links, as before.
+ * If scanning or hashing fails, it throws an exception instead of returning incomplete results.
+ */
+std::map<std::string, std::string> scan_directory(const fs::path& directory){
+    if(!fs::is_directory(directory)){
+        throw std::runtime_error("Path is not a directory");
+    }
+
+    std::map<std::string, std::string> snapshot;
+
+    for(const auto& entry : fs::recursive_directory_iterator(directory)){
+        if(entry.is_symlink()){
+            continue;
+        }
+
+        if(entry.is_regular_file()){
+            const std::string relative_path = entry.path().lexically_relative(directory).generic_string();
+
+            const auto size = entry.file_size();
+            const std::string hash = hash_file(entry.path());
+
+            snapshot.emplace(relative_path, hash);
+
+            std::cout << relative_path << " | " << size << " bytes" <<
+            " | SHA-256: " << hash << '\n';
+        }
+    }
+    return snapshot;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        std::cerr << "Usage: ./fim <directory>\n";
         return 1;
     }
 
-    fs::path directory = argv[1];
+    try {
+        const fs::path directory = fs::canonical(argv[1]);
+        const fs::path baseline =
+            fs::current_path() / "baseline.txt";
 
-    try{
-        if(!fs::is_directory(directory)){
-            std::cerr << "Error: path is not a directory.\n";
-            return 1;
+        // Reject saving the baseline inside the monitored directory.
+        const fs::path relative = baseline.lexically_relative(directory);
+
+        if (!relative.empty() && *relative.begin() != "..") {
+            throw std::runtime_error(
+                "baseline.txt must be outside the monitored directory."
+            );
         }
-        size_t file_count = 0;
 
-        for(const auto& entry:
-        fs::recursive_directory_iterator(directory)){
-            if(entry.is_symlink()){
-                continue;
-            }
-
-            if(entry.is_regular_file()){
-                const auto size = entry.file_size();
-                const std::string hash = hash_file(entry.path());
-
-                std::cout << entry.path().string() << " | " << size << "bytes" 
-                << " | SHA-256: " << hash << '\n';
-                ++file_count;
-            }
+        if (fs::exists(baseline)) {
+            throw std::runtime_error(
+                "baseline.txt already exists; refusing to overwrite it."
+            );
         }
-        std::cout << "Scan complete. Files found: "
-                  << file_count << '\n';
-    }catch(const std::exception& error){
-        std::cerr << "Scan failed: " << error.what() << '\n';
+
+        const auto snapshot = scan_directory(directory);
+
+        std::ofstream output(baseline);
+
+        if (!output.is_open()) {
+            throw std::runtime_error("Cannot create baseline.txt.");
+        }
+
+        output << "FIM_BASELINE_V1\n";
+        output << std::quoted(directory.generic_string()) << '\n';
+
+        for (const auto& [path, hash] : snapshot) {
+            output << std::quoted(path) << ' ' << hash << '\n';
+        }
+
+        output.close();
+
+        if (!output) {
+            throw std::runtime_error(
+                "Failed to finish writing baseline.txt; "
+                "the file may be incomplete."
+            );
+        }
+
+        std::cout << "Baseline saved. Files recorded: "
+                  << snapshot.size() << '\n';
+
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
+
     return 0;
 }
