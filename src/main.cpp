@@ -86,13 +86,118 @@ std::map<std::string, std::string> scan_directory(const fs::path& directory){
     return snapshot;
 }
 
+/**
+ * Reads the saved directory and file hashes.
+ * Scans that directory again using your existing function.
+ * Compares the two maps.
+ */
+void check_baseline() {
+    std::ifstream input("baseline.txt");
+
+    if (!input.is_open()) {
+        throw std::runtime_error("Cannot open baseline.txt.");
+    }
+
+    std::string header;
+    std::getline(input, header);
+
+    if (header != "FIM_BASELINE_V1") {
+        throw std::runtime_error("Unsupported baseline format.");
+    }
+
+    std::string directory_text;
+
+    input >> std::ws;
+
+    if (input.peek() != '"' ||
+        !(input >> std::quoted(directory_text))) {
+        throw std::runtime_error("Invalid baseline directory.");
+    }
+
+    const fs::path directory(directory_text);
+
+    if (!directory.is_absolute()) {
+        throw std::runtime_error(
+            "Baseline directory must be an absolute path."
+        );
+    }
+
+    std::map<std::string, std::string> original;
+
+    while (true) {
+        input >> std::ws;
+
+        if (input.bad()) {
+            throw std::runtime_error("Failed to read baseline.");
+        }
+
+        if (input.eof()) {
+            break;
+        }
+
+        std::string path;
+        std::string hash;
+
+        if (input.peek() != '"' ||
+            !(input >> std::quoted(path) >> hash)) {
+            throw std::runtime_error("Malformed baseline record.");
+        }
+
+        if (path.empty() ||
+            hash.size() != 64 ||
+            hash.find_first_not_of("0123456789abcdef")
+                != std::string::npos) {
+            throw std::runtime_error("Invalid baseline path or hash.");
+        }
+
+        if (!original.emplace(path, hash).second) {
+            throw std::runtime_error(
+                "Duplicate baseline path: " + path
+            );
+        }
+    }
+
+    const auto current = scan_directory(directory);
+    std::size_t changes = 0;
+
+    for (const auto& [path, hash] : current) {
+        const auto previous = original.find(path);
+
+        if (previous == original.end()) {
+            std::cout << "ADDED: " << path << '\n';
+            ++changes;
+        } else if (previous->second != hash) {
+            std::cout << "MODIFIED: " << path << '\n';
+            ++changes;
+        }
+    }
+
+    for (const auto& [path, hash] : original) {
+        if (current.find(path) == current.end()) {
+            std::cout << "DELETED: " << path << '\n';
+            ++changes;
+        }
+    }
+
+    std::cout << "Check complete. Changes found: "
+              << changes << '\n';
+}
+
 int main(int argc, char* argv[]) {
     if (argc != 2) {
-        std::cerr << "Usage: ./fim <directory>\n";
-        return 1;
+        //std::cerr << "Usage: ./fim <directory>\n";
+        //return 1;
+
+        std::cerr << "Usage: ./fim <directory> (create baseline)\n"
+                  << "       ./fim --check.    (compare with baseline)\n";
     }
 
     try {
+
+        if(std::string(argv[1]) == "--check"){
+            check_baseline();
+            return 0;
+        }
         const fs::path directory = fs::canonical(argv[1]);
         const fs::path baseline =
             fs::current_path() / "baseline.txt";
