@@ -41,8 +41,8 @@ def main():
             raise ValueError("Invalid change record.")
 
     history_record = {
-        "Checked_at": datetime.now(timezone.utc).isoformat(),
-        "Change_count":summary["changes"],
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "change_count":summary["changes"],
         "changes":changes,
     }
 
