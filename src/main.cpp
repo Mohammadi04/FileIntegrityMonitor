@@ -79,13 +79,39 @@ std::map<std::string, std::string> scan_directory(const fs::path& directory){
 
             snapshot.emplace(relative_path, hash);
 
-            std::cout << relative_path << " | " << size << " bytes" <<
+            std::cerr << relative_path << " | " << size << " bytes" <<
             " | SHA-256: " << hash << '\n';
         }
     }
     return snapshot;
 }
+std::string json_string(const std::string& text){
+    std::ostringstream output;
+    output << '"';
 
+    for(unsigned char ch: text){
+        if(ch == '"'){
+            output << "\\\"";
+        }else if(ch == '\\'){
+            output << "\\\\";
+        }else if(ch < 0x20){
+            output << "\\u" 
+                   << std::hex << std::setw(4)
+                   << std::setfill('0') << static_cast<unsigned int>(ch);
+        }else{
+            output << static_cast<char>(ch);
+        }
+    }
+    output << '"';
+    return output.str();
+}
+void print_change(const std::string& status, const std::string& path){
+    std::cout << "{\"type\":\"change\",\"status\":"
+              << json_string(status)
+              << ",\"path\":"
+              << json_string(path)
+              << "}\n";
+}
 /**
  * Reads the saved directory and file hashes.
  * Scans that directory again using your existing function.
@@ -164,23 +190,26 @@ void check_baseline() {
         const auto previous = original.find(path);
 
         if (previous == original.end()) {
-            std::cout << "ADDED: " << path << '\n';
+            print_change("ADDED", path);
             ++changes;
         } else if (previous->second != hash) {
-            std::cout << "MODIFIED: " << path << '\n';
+            print_change("MODIFIED", path);
             ++changes;
         }
     }
 
     for (const auto& [path, hash] : original) {
         if (current.find(path) == current.end()) {
-            std::cout << "DELETED: " << path << '\n';
+            print_change("DELETED", path);
             ++changes;
         }
     }
-
+    /*
     std::cout << "Check complete. Changes found: "
               << changes << '\n';
+    */
+    std::cout << "{\"type\":\"summary\",\"changes\":"
+        << changes << "}\n";
 }
 
 int main(int argc, char* argv[]) {

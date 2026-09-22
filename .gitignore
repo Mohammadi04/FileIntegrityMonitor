@@ -1,6 +1,7 @@
 # Complied executable
 /fim
 /baseline.txt
+/history.jsonl
 # macOs files
 .DS_Store
 
