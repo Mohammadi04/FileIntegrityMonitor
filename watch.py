@@ -1,12 +1,26 @@
 import subprocess
 import time
-
+import argparse
 
 from monitor import main as run_check
 
 
 def main():
-    interval = 10
+    parser = argparse.ArgumentParser(
+        description="Repeatedly check file interity and save history."
+    )
+
+    parser.add_argument(
+        "--interval", type=int,default=10,
+        help="Seconds to wait after each check (default: 10).",
+    )
+
+    args = parser.parse_args()
+
+    if args.interval <= 0:
+        parser.error("--interval must be greater than zero.")
+
+    interval = args.interval
 
     print(
         f"Monitoring started. Waiting {interval} seconds betweem checks.",
